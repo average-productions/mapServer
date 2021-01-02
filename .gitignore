@@ -7,7 +7,7 @@
 # misc
 .DS_Store
 /src/data
-/src/data/original
+/src/original
 /public/final.png
 /public/topo.json
 
