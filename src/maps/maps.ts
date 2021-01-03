@@ -1,5 +1,3 @@
-import { resolveSoa } from "dns";
-
 interface Country {
   name: string;
   code: string;
@@ -24,17 +22,26 @@ const continents = {
 };
 
 const orgShpFile = "ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp";
+const riversShpFile =
+  "ne_10m_rivers_lake_centerlines/ne_10m_rivers_lake_centerlines.shp";
 const cropByWindowShpFile = "ne_10m_admin_0_countries/cropByWindow.shp";
 const cropByCutlineShpFile = "ne_10m_admin_0_countries/cropByCutline.shp";
+const cropRiversByCutlineShpFile =
+  "ne_10m_rivers_lake_centerlines/cropRiversByCutline.shp";
 const geoJsonFile = "ne_10m_admin_0_countries/geo.json";
 const topoJsonFile = "ne_10m_admin_0_countries/topo.json";
+const geoJsonRiversFile = "ne_10m_rivers_lake_centerlines/geo.json";
+const topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/topo.json";
 const orgTifFile = "ETOPO1_Ice_g_geotiff.tif";
 const translatedTifFile = "ETOPO1.tif";
+const mercatorTifFile = "mercator.tif";
+const colorMapFile = "colormap.txt";
 const cropByCutlineTifFile = "cropByCutline.tif";
 const cropByWindowTifFile = "cropByWindow.tif";
 const shadedTifFile = "shadedrelief.tif";
 const shadedPngFile = "shadedrelief.png";
 const transparentPngFile = "transparent.png";
+const transparentJpgFile = "transparent.jpg";
 const finalPngFile = "final.png";
 const finalTopoFile = "topo.json";
 
@@ -42,7 +49,7 @@ const PNG_WIDTH = "2400";
 
 function clean(dataDir: string, finalPng: string, finalTopo: string) {
   return new Promise<void>((resolve, reject) => {
-    console.log("clean data folder");
+    console.log("\n== clean data folder");
     fs.rmdir(dataDir, { recursive: true }, (err) => {
       if (err) {
         reject(err);
@@ -71,7 +78,7 @@ function clean(dataDir: string, finalPng: string, finalTopo: string) {
 
 function setupDir(dataDir: string, orgDir: string) {
   return new Promise<void>((resolve, reject) => {
-    console.log("setup data folder");
+    console.log("\n== setup folder");
     fs.mkdir(dataDir, (err) => {
       if (err) {
         reject(err);
@@ -85,16 +92,16 @@ function setupDir(dataDir: string, orgDir: string) {
 function runExternal(cmd: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
     const execution = spawn(cmd, args);
-    execution.stdout.on("data", (data) => {
-      console.log(`stdout: ${data}`);
-    });
+    // execution.stdout.on("data", (data) => {
+    //   console.log(`stdout: ${data}`);
+    // });
 
     execution.stderr.on("data", (data) => {
       console.error(`stderr: ${data}`);
     });
 
     execution.on("close", (code) => {
-      console.log(`child process exited with code ${code}`);
+      // console.log(`child process exited with code ${code}`);
       if (code) {
         reject();
       } else {
@@ -105,6 +112,7 @@ function runExternal(cmd: string, args: string[]) {
 }
 
 function copyFiles(dataDir: string, orgDir: string) {
+  console.log("\n== copy files");
   return runExternal("cp", ["-a", `${orgDir}/.`, `${dataDir}/`]);
 }
 
@@ -114,6 +122,7 @@ function cropByCutlineShp(
   continentsInput: Country[],
   countriesInput: Country[]
 ) {
+  console.log("\n== crop by cutline");
   const filter = countriesInput.map((item) => `'${item.code}'`);
   const countriesFromContinents = [];
   const continentsMap = {};
@@ -145,6 +154,7 @@ function cropByWindowShp(
   fileNameAfter: string,
   coords
 ) {
+  console.log("\n== crop by window");
   const { north, south, west, east } = coords;
   return runExternal("ogr2ogr", [
     "-clipsrc",
@@ -158,6 +168,7 @@ function cropByWindowShp(
 }
 
 function addInfoToTif(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== add info");
   return runExternal("gdal_translate", [
     "-a_srs",
     "EPSG:4326",
@@ -168,11 +179,22 @@ function addInfoToTif(fileNameBefore: string, fileNameAfter: string) {
   ]);
 }
 
+function translateToMercator(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== translate to mercator");
+  return runExternal("gdalwarp", [
+    "-t_srs",
+    "EPSG:3857",
+    fileNameBefore,
+    fileNameAfter,
+  ]);
+}
+
 function cropByWindowTif(
   fileNameBefore: string,
   fileNameAfter: string,
   coords
 ) {
+  console.log("\n== crop tif by window");
   const { north, south, west, east } = coords;
   return runExternal("gdal_translate", [
     "-projwin",
@@ -192,66 +214,119 @@ function cropByCutlineTif(
   fileNameAfter: string,
   cutlineFileName: string
 ) {
+  console.log("\n== crop tif by cutline");
   return runExternal("gdalwarp", [
     "-cutline",
     cutlineFileName,
     "-crop_to_cutline",
     "-dstalpha",
+    "-srcnodata",
+    "255",
+    "-dstnodata",
+    "255",
     fileNameBefore,
     fileNameAfter,
   ]);
 }
 
-function shade(fileNameBefore: string, fileNameAfter: string) {
+function shade(
+  fileNameBefore: string,
+  fileNameAfter: string,
+  colorMap: string
+) {
+  // return runExternal("gdaldem", [
+  //   "color-relief",
+  //   fileNameBefore,
+  //   colorMap,
+  //   fileNameAfter,
+  //   "-alpha",
+  // ]);
+  console.log("\n== add hillshade");
   return runExternal("gdaldem", [
     "hillshade",
     fileNameBefore,
     fileNameAfter,
     "-z",
-    "5",
-    "-s",
-    "111120",
-    "-az",
-    "315",
-    "-alt",
-    "60",
+    "45",
+    // "-alpha",
+    "-compute_edges",
   ]);
 }
 
 function toPng(fileNameBefore: string, fileNameAfter: string) {
-  return runExternal("convert", [
+  console.log("\n== convert to png");
+  return runExternal("gdal_translate", [
+    "-of",
+    "PNG",
     fileNameBefore,
-    "-resize",
-    PNG_WIDTH,
     fileNameAfter,
   ]);
+  // return runExternal("convert", [
+  //   fileNameBefore,
+  //   "-resize",
+  //   PNG_WIDTH,
+  //   fileNameAfter,
+  // ]);
 }
 
 function toTransparent(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== make transparent");
+  // return runExternal("gdal_calc.py", [
+  //   "-A",
+  //   fileNameBefore,
+  //   `--outfile=${fileNameAfter}`,
+  //   '--calc="255*(A>220) + A*(A<=220)"',
+  // ]);
+
+  //  \
+  // 	-A tmp/hillshade.tmp.tif \
+  // 	--outfile=$@ \
+  //   --calc="255*(A>220) + A*(A<=220)"
+
+  // return runExternal("convert", [
+  //   fileNameBefore,
+  //   "-fuzz",
+  //   "7%",
+  //   "-fill",
+  //   "#FFFFFF",
+  //   "-opaque",
+  //   "#DDDDDD",
+  //   fileNameAfter,
+  // ]);
+
   return runExternal("convert", [
     fileNameBefore,
     "-fuzz",
-    "7%",
+    "6%",
     "-transparent",
-    "#DDDDDD",
+    "#b5b5b5",
     fileNameAfter,
   ]);
 }
 
 function toFinal(fileNameBefore: string, fileNameAfter: string) {
-  return runExternal("convert", [
+  console.log("\n== convert to png");
+  return runExternal("gdal_translate", [
+    "-of",
+    "PNG",
     fileNameBefore,
-    "-alpha",
-    "copy",
-    "-channel",
-    "alpha",
-    "-negate",
-    "+channel",
     fileNameAfter,
   ]);
+
+  // return runExternal("convert", [
+  //   fileNameBefore,
+  //   "-alpha",
+  //   "copy",
+  //   "-channel",
+  //   "alpha",
+  //   "-negate",
+  //   "+channel",
+  //   fileNameAfter,
+  // ]);
 }
 
 function toGeoJson(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== convert to geojson");
   return runExternal("ogr2ogr", [
     "-f",
     "GeoJSON",
@@ -261,6 +336,7 @@ function toGeoJson(fileNameBefore: string, fileNameAfter: string) {
 }
 
 function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== convert to topojson");
   return new Promise<void>((resolve, reject) => {
     const logStream = fs.createWriteStream(fileNameAfter, { flags: "a" });
     const execution = spawn("geo2topo", [fileNameBefore]);
@@ -269,25 +345,58 @@ function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
     execution.stderr.pipe(logStream);
 
     execution.on("close", (code) => {
-      console.log(`child process exited with code ${code}`);
+      // console.log(`child process exited with code ${code}`);
       if (code) {
         reject();
       } else {
-        resolve();
+        fs.readFile(`${fileNameAfter}`, "utf8", function (err, data) {
+          if (err) {
+            resolve();
+            return;
+          }
+
+          const o = JSON.parse(data);
+          o.objects.geo.geometries.forEach((element) => {
+            const copy: { [key: string]: string } = {};
+            copy.id = element.properties.SOV_A3;
+            copy.name = element.properties.NAME || element.properties.name;
+            element.properties = copy;
+          });
+
+          fs.writeFile(
+            fileNameAfter,
+            JSON.stringify(o),
+            { encoding: "utf8", flag: "w" },
+            (err) => {
+              if (err) {
+                console.error(err);
+              }
+              resolve();
+            }
+          );
+        });
       }
     });
   });
 }
 
-function copyToPublic(publicDir: string, finalPng: string, finalTopo: string) {
+function copyToPublic(
+  publicDir: string,
+  finalPng: string,
+  finalTopo: string,
+  riversTopo: string
+) {
+  console.log("\n== copy to public");
   return Promise.all([
     runExternal("cp", [finalPng, publicDir]),
     runExternal("cp", [finalTopo, publicDir]),
+    runExternal("cp", [riversTopo, publicDir]),
   ]);
 }
 
 module.exports = function (app) {
   app.get("/maps/topo.json", (req, res) => {
+    console.log("topo");
     const appDir = path.dirname(require.main.filename);
     const dataDir = `${appDir}/data`;
     fs.readFile(`${dataDir}/${topoJsonFile}`, "utf8", function (err, data) {
@@ -299,8 +408,24 @@ module.exports = function (app) {
     });
   });
 
+  app.get("/maps/rivers.json", (req, res) => {
+    console.log("rivers");
+    const appDir = path.dirname(require.main.filename);
+    const dataDir = `${appDir}/data`;
+    fs.readFile(
+      `${dataDir}/${topoJsonRiversFile}`,
+      "utf8",
+      function (err, data) {
+        if (err) {
+          res.status(500).send(err);
+          return;
+        }
+        res.json(JSON.parse(data));
+      }
+    );
+  });
+
   app.post("/maps/countries", (req, res) => {
-    console.log("req.body", req.body);
     (async function () {
       try {
         const appDir = path.dirname(require.main.filename);
@@ -321,6 +446,13 @@ module.exports = function (app) {
               `${dataDir}/${cropByCutlineShpFile}`,
               req.body.continents,
               req.body.countries
+            )
+          )
+          .then(() =>
+            cropByWindowShp(
+              `${dataDir}/${riversShpFile}`,
+              `${dataDir}/${cropRiversByCutlineShpFile}`,
+              { ...req.body }
             )
           )
           .then(() =>
@@ -351,30 +483,52 @@ module.exports = function (app) {
             )
           )
           .then(() =>
-            shade(
+            translateToMercator(
               `${dataDir}/${cropByWindowTifFile}`,
-              `${dataDir}/${shadedTifFile}`
+              `${dataDir}/${mercatorTifFile}`
             )
           )
           .then(() =>
-            toPng(`${dataDir}/${shadedTifFile}`, `${dataDir}/${shadedPngFile}`)
+            shade(
+              `${dataDir}/${mercatorTifFile}`,
+              `${dataDir}/${shadedTifFile}`,
+              `${dataDir}/${colorMapFile}`
+            )
           )
+          // .then(() =>
+          //   toPng(`${dataDir}/${shadedTifFile}`, `${dataDir}/${shadedPngFile}`)
+          // )
+          // .then(() =>
+          //   toPng(`${dataDir}/${shadedTifFile}`, `${dataDir}/${finalPngFile}`)
+          // )
           .then(() =>
             toTransparent(
-              `${dataDir}/${shadedPngFile}`,
-              `${dataDir}/${transparentPngFile}`
+              `${dataDir}/${shadedTifFile}`,
+              `${dataDir}/${finalPngFile}`
             )
           )
+          // .then(() =>
+          //   toFinal(
+          //     `${dataDir}/${transparentJpgFile}`,
+          //     `${dataDir}/${finalPngFile}`
+          //   )
+          // )
           .then(() =>
-            toFinal(
-              `${dataDir}/${transparentPngFile}`,
-              `${dataDir}/${finalPngFile}`
+            toGeoJson(
+              `${dataDir}/${cropRiversByCutlineShpFile}`,
+              `${dataDir}/${geoJsonRiversFile}`
             )
           )
           .then(() =>
             toGeoJson(
               `${dataDir}/${cropByWindowShpFile}`,
               `${dataDir}/${geoJsonFile}`
+            )
+          )
+          .then(() =>
+            toTopoJson(
+              `${dataDir}/${geoJsonRiversFile}`,
+              `${dataDir}/${topoJsonRiversFile}`
             )
           )
           .then(() =>
@@ -387,7 +541,8 @@ module.exports = function (app) {
             copyToPublic(
               publicDir,
               `${dataDir}/${finalPngFile}`,
-              `${dataDir}/${topoJsonFile}`
+              `${dataDir}/${topoJsonFile}`,
+              `${dataDir}/${topoJsonRiversFile}`
             )
           )
           .then(() =>
