@@ -256,6 +256,7 @@ function shade(
 function toPng(fileNameBefore: string, fileNameAfter: string) {
   console.log("\n== convert to png");
   return runExternal("gdal_translate", [
+    "-geometry",
     "-of",
     "PNG",
     fileNameBefore,
@@ -296,6 +297,8 @@ function toTransparent(fileNameBefore: string, fileNameAfter: string) {
 
   return runExternal("convert", [
     fileNameBefore,
+    "-trim",
+    "+repage",
     "-fuzz",
     "6%",
     "-transparent",
@@ -304,9 +307,15 @@ function toTransparent(fileNameBefore: string, fileNameAfter: string) {
   ]);
 }
 
-function toFinal(fileNameBefore: string, fileNameAfter: string) {
+function toFinal(fileNameBefore: string, fileNameAfter: string, coords) {
   console.log("\n== convert to png");
+  const { north, south, west, east } = coords;
   return runExternal("gdal_translate", [
+    "-projwin",
+    west,
+    north,
+    east,
+    south,
     "-of",
     "PNG",
     fileNameBefore,
