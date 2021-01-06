@@ -31,7 +31,7 @@ const cropRiversByCutlineShpFile =
 const geoJsonFile = "ne_10m_admin_0_countries/geo.json";
 const topoJsonFile = "ne_10m_admin_0_countries/topo.json";
 const geoJsonRiversFile = "ne_10m_rivers_lake_centerlines/geo.json";
-const topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/topo.json";
+const topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/rivers.json";
 const orgTifFile = "ETOPO1_Ice_g_geotiff.tif";
 const translatedTifFile = "ETOPO1.tif";
 const mercatorTifFile = "mercator.tif";
@@ -43,6 +43,7 @@ const shadedPngFile = "shadedrelief.png";
 const transparentPngFile = "transparent.png";
 const transparentJpgFile = "transparent.jpg";
 const finalPngFile = "final.png";
+const finalWebpFile = "final.webp";
 const finalTopoFile = "topo.json";
 
 const PNG_WIDTH = "2400";
@@ -307,18 +308,15 @@ function toTransparent(fileNameBefore: string, fileNameAfter: string) {
   ]);
 }
 
-function toFinal(fileNameBefore: string, fileNameAfter: string, coords) {
-  console.log("\n== convert to png");
-  const { north, south, west, east } = coords;
-  return runExternal("gdal_translate", [
-    "-projwin",
-    west,
-    north,
-    east,
-    south,
-    "-of",
-    "PNG",
+function toFinal(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== convert to webp");
+
+  return runExternal("magick", [
     fileNameBefore,
+    "-quality",
+    "50",
+    "-define",
+    "webp:lossless=true",
     fileNameAfter,
   ]);
 
@@ -348,7 +346,7 @@ function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
   console.log("\n== convert to topojson");
   return new Promise<void>((resolve, reject) => {
     const logStream = fs.createWriteStream(fileNameAfter, { flags: "a" });
-    const execution = spawn("geo2topo", [fileNameBefore]);
+    const execution = spawn("geo2topo", [`geo=${fileNameBefore}`]);
 
     execution.stdout.pipe(logStream);
     execution.stderr.pipe(logStream);
@@ -367,8 +365,12 @@ function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
           const o = JSON.parse(data);
           o.objects.geo.geometries.forEach((element) => {
             const copy: { [key: string]: string } = {};
-            copy.id = element.properties.SOV_A3;
-            copy.name = element.properties.NAME || element.properties.name;
+            // console.log("element.properties", element.properties);
+
+            const name = element.properties.NAME || element.properties.name;
+            copy.sov = element.properties.SOV_A3;
+            copy.id = `${name}_${element.properties.SOV_A3}`;
+            copy.name = name;
             element.properties = copy;
           });
 
@@ -391,48 +393,48 @@ function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
 
 function copyToPublic(
   publicDir: string,
-  finalPng: string,
+  finalWebp: string,
   finalTopo: string,
   riversTopo: string
 ) {
   console.log("\n== copy to public");
   return Promise.all([
-    runExternal("cp", [finalPng, publicDir]),
+    runExternal("cp", [finalWebp, publicDir]),
     runExternal("cp", [finalTopo, publicDir]),
     runExternal("cp", [riversTopo, publicDir]),
   ]);
 }
 
 module.exports = function (app) {
-  app.get("/maps/topo.json", (req, res) => {
-    console.log("topo");
-    const appDir = path.dirname(require.main.filename);
-    const dataDir = `${appDir}/data`;
-    fs.readFile(`${dataDir}/${topoJsonFile}`, "utf8", function (err, data) {
-      if (err) {
-        res.status(500).send(err);
-        return;
-      }
-      res.json(JSON.parse(data));
-    });
-  });
+  // app.get("/maps/topo.json", (req, res) => {
+  //   console.log("topo");
+  //   const appDir = path.dirname(require.main.filename);
+  //   const dataDir = `${appDir}/data`;
+  //   fs.readFile(`${dataDir}/${topoJsonFile}`, "utf8", function (err, data) {
+  //     if (err) {
+  //       res.status(500).send(err);
+  //       return;
+  //     }
+  //     res.json(JSON.parse(data));
+  //   });
+  // });
 
-  app.get("/maps/rivers.json", (req, res) => {
-    console.log("rivers");
-    const appDir = path.dirname(require.main.filename);
-    const dataDir = `${appDir}/data`;
-    fs.readFile(
-      `${dataDir}/${topoJsonRiversFile}`,
-      "utf8",
-      function (err, data) {
-        if (err) {
-          res.status(500).send(err);
-          return;
-        }
-        res.json(JSON.parse(data));
-      }
-    );
-  });
+  // app.get("/maps/rivers.json", (req, res) => {
+  //   console.log("rivers");
+  //   const appDir = path.dirname(require.main.filename);
+  //   const dataDir = `${appDir}/data`;
+  //   fs.readFile(
+  //     `${dataDir}/${topoJsonRiversFile}`,
+  //     "utf8",
+  //     function (err, data) {
+  //       if (err) {
+  //         res.status(500).send(err);
+  //         return;
+  //       }
+  //       res.json(JSON.parse(data));
+  //     }
+  //   );
+  // });
 
   app.post("/maps/countries", (req, res) => {
     (async function () {
@@ -516,12 +518,9 @@ module.exports = function (app) {
               `${dataDir}/${finalPngFile}`
             )
           )
-          // .then(() =>
-          //   toFinal(
-          //     `${dataDir}/${transparentJpgFile}`,
-          //     `${dataDir}/${finalPngFile}`
-          //   )
-          // )
+          .then(() =>
+            toFinal(`${dataDir}/${finalPngFile}`, `${dataDir}/${finalWebpFile}`)
+          )
           .then(() =>
             toGeoJson(
               `${dataDir}/${cropRiversByCutlineShpFile}`,
@@ -549,7 +548,7 @@ module.exports = function (app) {
           .then(() =>
             copyToPublic(
               publicDir,
-              `${dataDir}/${finalPngFile}`,
+              `${dataDir}/${finalWebpFile}`,
               `${dataDir}/${topoJsonFile}`,
               `${dataDir}/${topoJsonRiversFile}`
             )
