@@ -29,9 +29,7 @@ const cropByCutlineShpFile = "ne_10m_admin_0_countries/cropByCutline.shp";
 const cropRiversByCutlineShpFile =
   "ne_10m_rivers_lake_centerlines/cropRiversByCutline.shp";
 const geoJsonFile = "ne_10m_admin_0_countries/geo.json";
-const topoJsonFile = "ne_10m_admin_0_countries/topo.json";
 const geoJsonRiversFile = "ne_10m_rivers_lake_centerlines/geo.json";
-const topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/rivers.json";
 const orgTifFile = "ETOPO1_Ice_g_geotiff.tif";
 const translatedTifFile = "ETOPO1.tif";
 const mercatorTifFile = "mercator.tif";
@@ -43,10 +41,10 @@ const shadedPngFile = "shadedrelief.png";
 const transparentPngFile = "transparent.png";
 const transparentJpgFile = "transparent.jpg";
 const finalPngFile = "final.png";
-const finalWebpFile = "final.webp";
 const finalTopoFile = "topo.json";
-
-const PNG_WIDTH = "2400";
+let finalWebpFile = "final.webp";
+let topoJsonFile = "ne_10m_admin_0_countries/topo.json";
+let topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/rivers.json";
 
 function clean(dataDir: string, finalPng: string, finalTopo: string) {
   return new Promise<void>((resolve, reject) => {
@@ -163,6 +161,8 @@ function cropByWindowShp(
     north,
     east,
     south,
+    "-simplify",
+    "0.05",
     fileNameAfter,
     fileNameBefore,
   ]);
@@ -298,6 +298,8 @@ function toTransparent(fileNameBefore: string, fileNameAfter: string) {
 
   return runExternal("convert", [
     fileNameBefore,
+    "-resize",
+    "30%",
     "-trim",
     "+repage",
     "-fuzz",
@@ -314,9 +316,12 @@ function toFinal(fileNameBefore: string, fileNameAfter: string) {
   return runExternal("magick", [
     fileNameBefore,
     "-quality",
-    "50",
+    "20",
+    "-strip",
     "-define",
-    "webp:lossless=true",
+    "webp:target-size=200000",
+    // "-define",
+    // "webp:lossless=true",
     fileNameAfter,
   ]);
 
@@ -443,6 +448,11 @@ module.exports = function (app) {
         const dataDir = `${appDir}/data`;
         const orgDir = `${appDir}/original`;
         const publicDir = `${appDir}/../public`;
+        const { north, south, west, east } = req.body;
+        const coords = `${north}_${west}_${east}_${south}`;
+        finalWebpFile = `final_${coords}.webp`;
+        topoJsonFile = `ne_10m_admin_0_countries/land_${coords}.json`;
+        topoJsonRiversFile = `ne_10m_rivers_lake_centerlines/rivers_${coords}.json`;
 
         clean(
           dataDir,
@@ -506,12 +516,6 @@ module.exports = function (app) {
               `${dataDir}/${colorMapFile}`
             )
           )
-          // .then(() =>
-          //   toPng(`${dataDir}/${shadedTifFile}`, `${dataDir}/${shadedPngFile}`)
-          // )
-          // .then(() =>
-          //   toPng(`${dataDir}/${shadedTifFile}`, `${dataDir}/${finalPngFile}`)
-          // )
           .then(() =>
             toTransparent(
               `${dataDir}/${shadedTifFile}`,
