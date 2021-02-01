@@ -33,6 +33,7 @@ const geoJsonRiversFile = "ne_10m_rivers_lake_centerlines/geo.json";
 const orgTifFile = "ETOPO1_Ice_g_geotiff.tif";
 const translatedTifFile = "ETOPO1.tif";
 const mercatorTifFile = "mercator.tif";
+const mergedShpFile = "merged.shp";
 const colorMapFile = "colormap.txt";
 const cropByCutlineTifFile = "cropByCutline.tif";
 const cropByWindowTifFile = "cropByWindow.tif";
@@ -162,7 +163,7 @@ function cropByWindowShp(
     east,
     south,
     "-simplify",
-    "0.05",
+    "0.07",
     fileNameAfter,
     fileNameBefore,
   ]);
@@ -228,6 +229,52 @@ function cropByCutlineTif(
     fileNameBefore,
     fileNameAfter,
   ]);
+}
+
+function merge(fileNameBefore: string, fileNameAfter: string) {
+  console.log("\n== merge file");
+
+  // ogr2ogr output.shp input.shp -dialect sqlite -sql "SELECT ST_Union(geometry), dissolve_field FROM input GROUP BY dissolve_field"
+
+  const names = fileNameBefore.split("/").pop();
+  const name = names.split(".")[0];
+
+  console.log("name", name);
+
+  const sql = `SELECT ST_Union(geometry) AS geometry FROM ${name}`;
+
+  // const appDir = path.dirname(require.main.filename);
+  //       const dataDir = `${appDir}/data`;
+  // const testFile = `${dataDir}/test.shp`;
+
+  // return runExternal("gdalwarp", [
+  //   "-cutline",
+  //   cutlineFileName,
+  //   "-crop_to_cutline",
+  //   "-dstalpha",
+  //   "-srcnodata",
+  //   "255",
+  //   "-dstnodata",
+  //   "255",
+  //   fileNameBefore,
+  //   fileNameAfter,
+  // ]);
+
+  return runExternal("ogr2ogr", [
+    fileNameAfter,
+    fileNameBefore,
+    "-dialect",
+    "sqlite",
+    "-sql",
+    sql,
+  ]);
+
+  // return runExternal("gdal_merge.py", [
+  //   "-st",
+  //   "100",
+  //   fileNameBefore,
+  //   fileNameAfter,
+  // ]);
 }
 
 function shade(
@@ -484,6 +531,12 @@ module.exports = function (app) {
             )
           )
           .then(() =>
+            merge(
+              `${dataDir}/${cropByWindowShpFile}`,
+              `${dataDir}/${mergedShpFile}`
+            )
+          )
+          .then(() =>
             addInfoToTif(
               `${dataDir}/${orgTifFile}`,
               `${dataDir}/${translatedTifFile}`
@@ -533,7 +586,7 @@ module.exports = function (app) {
           )
           .then(() =>
             toGeoJson(
-              `${dataDir}/${cropByWindowShpFile}`,
+              `${dataDir}/${mergedShpFile}`,
               `${dataDir}/${geoJsonFile}`
             )
           )
