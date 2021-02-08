@@ -163,7 +163,7 @@ function cropByWindowShp(
     east,
     south,
     "-simplify",
-    "0.07",
+    "0.09",
     fileNameAfter,
     fileNameBefore,
   ]);
@@ -242,23 +242,6 @@ function merge(fileNameBefore: string, fileNameAfter: string) {
   console.log("name", name);
 
   const sql = `SELECT ST_Union(geometry) AS geometry FROM ${name}`;
-
-  // const appDir = path.dirname(require.main.filename);
-  //       const dataDir = `${appDir}/data`;
-  // const testFile = `${dataDir}/test.shp`;
-
-  // return runExternal("gdalwarp", [
-  //   "-cutline",
-  //   cutlineFileName,
-  //   "-crop_to_cutline",
-  //   "-dstalpha",
-  //   "-srcnodata",
-  //   "255",
-  //   "-dstnodata",
-  //   "255",
-  //   fileNameBefore,
-  //   fileNameAfter,
-  // ]);
 
   return runExternal("ogr2ogr", [
     fileNameAfter,
