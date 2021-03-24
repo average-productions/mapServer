@@ -163,7 +163,7 @@ function cropByWindowShp(
     east,
     south,
     "-simplify",
-    "0.09",
+    "0.02",
     fileNameAfter,
     fileNameBefore,
   ]);
@@ -372,6 +372,8 @@ function toGeoJson(fileNameBefore: string, fileNameAfter: string) {
   return runExternal("ogr2ogr", [
     "-f",
     "GeoJSON",
+    // "-t_srs",
+    // "EPSG:3857",
     fileNameAfter,
     fileNameBefore,
   ]);
