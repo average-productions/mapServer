@@ -21,14 +21,10 @@ const continents = {
   Oceania: 5,
 };
 
-const orgShpFile = "ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp";
-const riversShpFile =
-  "ne_10m_rivers_lake_centerlines/ne_10m_rivers_lake_centerlines.shp";
-const cropByWindowShpFile = "ne_10m_admin_0_countries/cropByWindow.shp";
-const cropByCutlineShpFile = "ne_10m_admin_0_countries/cropByCutline.shp";
 const cropRiversByCutlineShpFile =
   "ne_10m_rivers_lake_centerlines/cropRiversByCutline.shp";
-const geoJsonFile = "ne_10m_admin_0_countries/geo.json";
+const riversShpFile =
+  "ne_10m_rivers_lake_centerlines/ne_10m_rivers_lake_centerlines.shp";
 const geoJsonRiversFile = "ne_10m_rivers_lake_centerlines/geo.json";
 const orgTifFile = "ETOPO1_Ice_g_geotiff.tif";
 const translatedTifFile = "ETOPO1.tif";
@@ -43,9 +39,33 @@ const transparentPngFile = "transparent.png";
 const transparentJpgFile = "transparent.jpg";
 const finalPngFile = "final.png";
 const finalTopoFile = "topo.json";
-let finalWebpFile = "final.webp";
-let topoJsonFile = "ne_10m_admin_0_countries/topo.json";
-let topoJsonRiversFile = "ne_10m_rivers_lake_centerlines/rivers.json";
+
+let orgShpFile = "";
+let cropByWindowShpFile = "";
+let cropByCutlineShpFile = "";
+let geoJsonFile = "";
+let finalWebpFile = "";
+let topoJsonFile = "";
+let topoJsonRiversFile = "";
+
+function setFileNames(landOnly: boolean, id: string) {
+  if (landOnly) {
+    orgShpFile = "ne_10m_land/ne_10m_land.shp";
+    cropByWindowShpFile = "ne_10m_land/cropByWindow.shp";
+    cropByCutlineShpFile = "ne_10m_land/cropByCutline.shp";
+    geoJsonFile = "ne_10m_land/geo.json";
+    topoJsonFile = `ne_10m_land/land_${id}.json`;
+  } else {
+    orgShpFile = "ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp";
+    cropByWindowShpFile = "ne_10m_admin_0_countries/cropByWindow.shp";
+    cropByCutlineShpFile = "ne_10m_admin_0_countries/cropByCutline.shp";
+    geoJsonFile = "ne_10m_admin_0_countries/geo.json";
+    topoJsonFile = `ne_10m_admin_0_countries/land_${id}.json`;
+  }
+
+  finalWebpFile = `final_${id}.webp`;
+  topoJsonRiversFile = `ne_10m_rivers_lake_centerlines/rivers_${id}.json`;
+}
 
 function clean(dataDir: string, finalPng: string, finalTopo: string) {
   return new Promise<void>((resolve, reject) => {
@@ -120,9 +140,20 @@ function cropByCutlineShp(
   fileNameBefore: string,
   fileNameAfter: string,
   continentsInput: Country[],
-  countriesInput: Country[]
+  countriesInput: Country[],
+  landOnly: boolean
 ) {
   console.log("\n== crop by cutline");
+
+  if (landOnly) {
+    return runExternal("ogr2ogr", [
+      "-lco",
+      "ENCODING=UTF-8",
+      fileNameAfter,
+      fileNameBefore,
+    ]);
+  }
+
   const filter = countriesInput.map((item) => `'${item.code}'`);
   const countriesFromContinents = [];
   const continentsMap = {};
@@ -163,7 +194,7 @@ function cropByWindowShp(
     east,
     south,
     "-simplify",
-    "0.02",
+    "0.01",
     fileNameAfter,
     fileNameBefore,
   ]);
@@ -238,8 +269,6 @@ function merge(fileNameBefore: string, fileNameAfter: string) {
 
   const names = fileNameBefore.split("/").pop();
   const name = names.split(".")[0];
-
-  console.log("name", name);
 
   const sql = `SELECT ST_Union(geometry) AS geometry FROM ${name}`;
 
@@ -346,7 +375,7 @@ function toFinal(fileNameBefore: string, fileNameAfter: string) {
   return runExternal("magick", [
     fileNameBefore,
     "-quality",
-    "20",
+    "70",
     "-strip",
     "-define",
     "webp:target-size=200000",
@@ -405,9 +434,19 @@ function toTopoJson(fileNameBefore: string, fileNameAfter: string) {
             // console.log("element.properties", element.properties);
 
             const name = element.properties.NAME || element.properties.name;
-            copy.sov = element.properties.SOV_A3;
-            copy.id = `${name}_${element.properties.SOV_A3}`;
-            copy.name = name;
+
+            if (name) {
+              const sov = element.properties.SOV_A3;
+              if (sov) {
+                copy.sov = element.properties.SOV_A3;
+                copy.id = `${name}_${element.properties.SOV_A3}`;
+              } else {
+                copy.id = name;
+              }
+
+              copy.name = name;
+            }
+
             element.properties = copy;
           });
 
@@ -482,9 +521,8 @@ module.exports = function (app) {
         const publicDir = `${appDir}/../public`;
         const { north, south, west, east } = req.body;
         const coords = `${north}_${west}_${east}_${south}`;
-        finalWebpFile = `final_${coords}.webp`;
-        topoJsonFile = `ne_10m_admin_0_countries/land_${coords}.json`;
-        topoJsonRiversFile = `ne_10m_rivers_lake_centerlines/rivers_${coords}.json`;
+
+        setFileNames(req.body.landOnly, coords);
 
         clean(
           dataDir,
@@ -498,7 +536,8 @@ module.exports = function (app) {
               `${dataDir}/${orgShpFile}`,
               `${dataDir}/${cropByCutlineShpFile}`,
               req.body.continents,
-              req.body.countries
+              req.body.countries,
+              req.body.landOnly
             )
           )
           .then(() =>
